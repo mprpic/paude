@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,16 @@ def cleanup_session(backend: PodmanBackend, session_name: str) -> None:
             ["podman", "volume", "rm", "-f", f"paude-{session_name}-workspace"],
             capture_output=True,
         )
+
+    # Always clean up proxy container and network (may exist from proxy tests)
+    subprocess.run(
+        ["podman", "rm", "-f", f"paude-proxy-{session_name}"],
+        capture_output=True,
+    )
+    subprocess.run(
+        ["podman", "network", "rm", "-f", f"paude-net-{session_name}"],
+        capture_output=True,
+    )
 
 
 class TestPodmanSessionLifecycle:
@@ -503,3 +514,352 @@ class TestPodmanEnvironment:
 
         finally:
             cleanup_session(backend, unique_session_name)
+
+
+def _start_proxy_session(
+    backend: PodmanBackend,
+    session_name: str,
+    workspace: Path,
+    main_image: str,
+    proxy_image: str,
+    allowed_domains: list[str],
+) -> str:
+    """Create and start a session with proxy egress filtering.
+
+    Uses PodmanBackend.create_session() which creates:
+    - Internal network (paude-net-{session_name})
+    - Proxy container on internal + podman networks
+    - Main container on internal network only with HTTP_PROXY set
+
+    Then starts both proxy and main containers.
+
+    Returns the proxy container's IP address on the internal network.
+    """
+    config = SessionConfig(
+        name=session_name,
+        workspace=workspace,
+        image=main_image,
+        allowed_domains=allowed_domains,
+        proxy_image=proxy_image,
+    )
+    backend.create_session(config)
+
+    # Start proxy container first (created stopped by create_session)
+    proxy_name = f"paude-proxy-{session_name}"
+    subprocess.run(
+        ["podman", "start", proxy_name],
+        capture_output=True,
+        check=True,
+    )
+    # Give squid time to initialize
+    time.sleep(2)
+
+    # Start main container
+    container_name = f"paude-{session_name}"
+    subprocess.run(
+        ["podman", "start", container_name],
+        capture_output=True,
+        check=True,
+    )
+
+    # Get proxy IP on the internal network (avoids DNS resolution issues in CI)
+    network_name = f"paude-net-{session_name}"
+    result = subprocess.run(
+        [
+            "podman",
+            "inspect",
+            "--format",
+            f'{{{{(index .NetworkSettings.Networks "{network_name}").IPAddress}}}}',
+            proxy_name,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
+class TestPodmanProxyEgressFiltering:
+    """Test proxy-based egress filtering with real Podman."""
+
+    def test_create_session_with_domains_creates_proxy_and_network(
+        self,
+        require_podman: None,
+        require_test_image: None,
+        require_proxy_image: None,
+        temp_workspace: Path,
+        unique_session_name: str,
+        podman_test_image: str,
+        podman_proxy_image: str,
+    ) -> None:
+        """Creating a session with allowed_domains creates proxy and network."""
+        backend = PodmanBackend()
+        network_name = f"paude-net-{unique_session_name}"
+        proxy_name = f"paude-proxy-{unique_session_name}"
+        container_name = f"paude-{unique_session_name}"
+
+        try:
+            config = SessionConfig(
+                name=unique_session_name,
+                workspace=temp_workspace,
+                image=podman_test_image,
+                allowed_domains=[".googleapis.com"],
+                proxy_image=podman_proxy_image,
+            )
+            backend.create_session(config)
+
+            # Verify proxy container exists
+            result = subprocess.run(
+                ["podman", "container", "exists", proxy_name],
+                capture_output=True,
+            )
+            assert result.returncode == 0, "Proxy container should exist"
+
+            # Verify network exists
+            result = subprocess.run(
+                ["podman", "network", "exists", network_name],
+                capture_output=True,
+            )
+            assert result.returncode == 0, "Internal network should exist"
+
+            # Verify main container has HTTP_PROXY env var set
+            result = subprocess.run(
+                [
+                    "podman",
+                    "inspect",
+                    container_name,
+                    "--format",
+                    "{{range .Config.Env}}{{println .}}{{end}}",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            assert f"HTTP_PROXY=http://{proxy_name}:3128" in result.stdout, (
+                "Main container should have HTTP_PROXY pointing to proxy"
+            )
+
+        finally:
+            cleanup_session(backend, unique_session_name)
+
+    def test_proxy_allows_permitted_domains(
+        self,
+        require_podman: None,
+        require_test_image: None,
+        require_proxy_image: None,
+        temp_workspace: Path,
+        unique_session_name: str,
+        podman_test_image: str,
+        podman_proxy_image: str,
+    ) -> None:
+        """Proxy allows requests to permitted domains."""
+        backend = PodmanBackend()
+        container_name = f"paude-{unique_session_name}"
+
+        try:
+            proxy_ip = _start_proxy_session(
+                backend=backend,
+                session_name=unique_session_name,
+                workspace=temp_workspace,
+                main_image=podman_test_image,
+                proxy_image=podman_proxy_image,
+                allowed_domains=[".googleapis.com"],
+            )
+
+            # Curl an allowed domain through the proxy using explicit IP.
+            # Uses -x to specify proxy directly, bypassing DNS resolution
+            # (aardvark-dns may not work on --internal networks in CI).
+            proxy_name = f"paude-proxy-{unique_session_name}"
+            subprocess.run(
+                [
+                    "podman",
+                    "exec",
+                    container_name,
+                    "curl",
+                    "-s",
+                    "-o",
+                    "/dev/null",
+                    "-x",
+                    f"http://{proxy_ip}:3128",
+                    "--connect-timeout",
+                    "10",
+                    "-m",
+                    "15",
+                    "https://oauth2.googleapis.com/",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            # Check proxy logs: squid only logs BLOCKED requests
+            # (access_log ... !allowed_domains). If the domain appears in
+            # the logs, the proxy denied it. Absence means it was allowed,
+            # regardless of whether the upstream was actually reachable.
+            log_result = subprocess.run(
+                ["podman", "logs", proxy_name],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            assert "oauth2.googleapis.com" not in log_result.stdout, (
+                f"Proxy blocked an allowed domain, proxy_logs={log_result.stdout}"
+            )
+
+        finally:
+            cleanup_session(backend, unique_session_name)
+
+    def test_proxy_blocks_non_permitted_domains(
+        self,
+        require_podman: None,
+        require_test_image: None,
+        require_proxy_image: None,
+        temp_workspace: Path,
+        unique_session_name: str,
+        podman_test_image: str,
+        podman_proxy_image: str,
+    ) -> None:
+        """Proxy blocks requests to non-permitted domains with 403."""
+        backend = PodmanBackend()
+        container_name = f"paude-{unique_session_name}"
+
+        try:
+            proxy_ip = _start_proxy_session(
+                backend=backend,
+                session_name=unique_session_name,
+                workspace=temp_workspace,
+                main_image=podman_test_image,
+                proxy_image=podman_proxy_image,
+                allowed_domains=[".googleapis.com"],
+            )
+
+            # Curl a blocked domain through the proxy using explicit IP
+            # (bypasses DNS resolution issues in CI)
+            result = subprocess.run(
+                [
+                    "podman",
+                    "exec",
+                    container_name,
+                    "curl",
+                    "-s",
+                    "-o",
+                    "/dev/null",
+                    "-w",
+                    "%{http_code}",
+                    "-x",
+                    f"http://{proxy_ip}:3128",
+                    "--connect-timeout",
+                    "10",
+                    "-m",
+                    "15",
+                    "https://example.com/",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            # Squid may return 403 (explicit denial) or reset the connection
+            # (curl exit code != 0, http_code 000) depending on version.
+            # Both mean the request was blocked.
+            http_code = result.stdout.strip()
+            assert http_code == "403" or (
+                http_code == "000" and result.returncode != 0
+            ), (
+                f"curl to blocked domain should be denied (403 or connection reset), "
+                f"got http_code={http_code}, returncode={result.returncode}, "
+                f"stderr={result.stderr}"
+            )
+
+        finally:
+            cleanup_session(backend, unique_session_name)
+
+    def test_no_direct_internet_without_proxy(
+        self,
+        require_podman: None,
+        require_test_image: None,
+        require_proxy_image: None,
+        temp_workspace: Path,
+        unique_session_name: str,
+        podman_test_image: str,
+        podman_proxy_image: str,
+    ) -> None:
+        """Main container cannot reach the internet bypassing the proxy."""
+        backend = PodmanBackend()
+        container_name = f"paude-{unique_session_name}"
+
+        try:
+            _start_proxy_session(
+                backend=backend,
+                session_name=unique_session_name,
+                workspace=temp_workspace,
+                main_image=podman_test_image,
+                proxy_image=podman_proxy_image,
+                allowed_domains=[".googleapis.com"],
+            )
+
+            # Try to reach the internet directly, bypassing proxy
+            result = subprocess.run(
+                [
+                    "podman",
+                    "exec",
+                    container_name,
+                    "curl",
+                    "--noproxy",
+                    "*",
+                    "-sf",
+                    "--connect-timeout",
+                    "5",
+                    "-m",
+                    "10",
+                    "https://example.com/",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            # Should fail — internal network has no gateway
+            assert result.returncode != 0, (
+                "Direct internet access should fail on internal network"
+            )
+
+        finally:
+            cleanup_session(backend, unique_session_name)
+
+    def test_delete_session_cleans_up_proxy_and_network(
+        self,
+        require_podman: None,
+        require_test_image: None,
+        require_proxy_image: None,
+        temp_workspace: Path,
+        unique_session_name: str,
+        podman_test_image: str,
+        podman_proxy_image: str,
+    ) -> None:
+        """Deleting a proxy session removes proxy container and network."""
+        network_name = f"paude-net-{unique_session_name}"
+        proxy_name = f"paude-proxy-{unique_session_name}"
+
+        backend = PodmanBackend()
+        config = SessionConfig(
+            name=unique_session_name,
+            workspace=temp_workspace,
+            image=podman_test_image,
+            allowed_domains=[".googleapis.com"],
+            proxy_image=podman_proxy_image,
+        )
+        backend.create_session(config)
+
+        # Delete the session
+        backend.delete_session(unique_session_name, confirm=True)
+
+        # Verify proxy container is gone
+        result = subprocess.run(
+            ["podman", "container", "exists", proxy_name],
+            capture_output=True,
+        )
+        assert result.returncode != 0, "Proxy container should be deleted"
+
+        # Verify network is gone
+        result = subprocess.run(
+            ["podman", "network", "exists", network_name],
+            capture_output=True,
+        )
+        assert result.returncode != 0, "Network should be deleted"
