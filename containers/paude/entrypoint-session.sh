@@ -2,7 +2,7 @@
 set -e
 
 # Entrypoint for persistent sessions (Podman and OpenShift)
-# Handles: HOME setup, credentials from tmpfs, venv creation, dependency installation, Claude startup
+# Handles: HOME setup, credentials from tmpfs, Claude startup
 
 # Ensure HOME is set correctly for OpenShift arbitrary UID
 # OpenShift runs containers with random UIDs that don't exist in /etc/passwd
@@ -232,10 +232,6 @@ fi
 # Session workspace setup
 # For persistent sessions, workspace is at /workspace (mounted volume)
 WORKSPACE="${PAUDE_WORKSPACE:-/workspace}"
-VENV_PATH="$WORKSPACE/.venv"
-UV_CACHE="$WORKSPACE/.uv-cache"
-REQUIREMENTS_FILE="$WORKSPACE/requirements.txt"
-HASH_FILE="$VENV_PATH/.requirements-hash"
 
 # Create workspace directory if it doesn't exist
 mkdir -p "$WORKSPACE" 2>/dev/null || true
@@ -244,75 +240,6 @@ chmod g+rwX "$WORKSPACE" 2>/dev/null || true
 # Fix workspace .claude directory if it exists (synced from host)
 if [[ -d "$WORKSPACE/.claude" ]]; then
     chmod -R g+rwX "$WORKSPACE/.claude" 2>/dev/null || true
-fi
-
-# Set up uv cache directory
-export UV_CACHE_DIR="$UV_CACHE"
-mkdir -p "$UV_CACHE" 2>/dev/null || true
-
-# Function to compute requirements.txt hash
-compute_requirements_hash() {
-    if [[ -f "$REQUIREMENTS_FILE" ]]; then
-        sha256sum "$REQUIREMENTS_FILE" 2>/dev/null | cut -d' ' -f1
-    else
-        echo "no-requirements"
-    fi
-}
-
-# Function to get installed hash
-get_installed_hash() {
-    if [[ -f "$HASH_FILE" ]]; then
-        cat "$HASH_FILE" 2>/dev/null || echo ""
-    else
-        echo ""
-    fi
-}
-
-# Create or update virtual environment if requirements.txt exists
-if [[ -f "$REQUIREMENTS_FILE" ]]; then
-    CURRENT_HASH=$(compute_requirements_hash)
-    INSTALLED_HASH=$(get_installed_hash)
-
-    # Create venv if it doesn't exist
-    if [[ ! -d "$VENV_PATH" ]]; then
-        echo "Creating virtual environment at $VENV_PATH..."
-        python3 -m venv "$VENV_PATH"
-        chmod -R g+rwX "$VENV_PATH" 2>/dev/null || true
-        INSTALLED_HASH=""  # Force reinstall
-    fi
-
-    # Install dependencies if hash changed
-    if [[ "$CURRENT_HASH" != "$INSTALLED_HASH" ]]; then
-        echo "Installing dependencies with uv..."
-        if "$HOME/.local/bin/uv" pip install --python "$VENV_PATH/bin/python" -r "$REQUIREMENTS_FILE"; then
-            echo "$CURRENT_HASH" > "$HASH_FILE"
-            chmod g+rw "$HASH_FILE" 2>/dev/null || true
-            echo "Dependencies installed successfully."
-        else
-            echo "Warning: Failed to install some dependencies."
-        fi
-    else
-        echo "Dependencies up to date."
-    fi
-
-    # Activate virtual environment for subsequent commands
-    export VIRTUAL_ENV="$VENV_PATH"
-    export PATH="$VENV_PATH/bin:$PATH"
-    unset PYTHON_HOME
-fi
-
-# Handle venv shadowing (for workspace mounts that have their own venv)
-if [[ -n "${PAUDE_VENV_PATHS:-}" && -d /opt/venv ]]; then
-    IFS=':' read -ra VENV_PATHS <<< "$PAUDE_VENV_PATHS"
-    for venv_path in "${VENV_PATHS[@]}"; do
-        if [[ -d "$venv_path" ]]; then
-            for subdir in bin lib include lib64 pyvenv.cfg; do
-                if [[ -e "/opt/venv/$subdir" ]]; then
-                    ln -sf "/opt/venv/$subdir" "$venv_path/$subdir"
-                fi
-            done
-        fi
-    done
 fi
 
 # Get claude args from environment or command line
@@ -340,9 +267,6 @@ else
     echo "Starting new Claude session..."
     tmux -u new-session -s "$SESSION_NAME" -d "bash -l"
     tmux send-keys -t "$SESSION_NAME" "export HOME=$HOME PATH=$HOME/.local/bin:\$PATH" Enter
-    if [[ -d "$VENV_PATH" ]]; then
-        tmux send-keys -t "$SESSION_NAME" "source $VENV_PATH/bin/activate" Enter
-    fi
     tmux send-keys -t "$SESSION_NAME" "cd $WORKSPACE" Enter
     tmux send-keys -t "$SESSION_NAME" "claude $CLAUDE_ARGS" Enter
     exec tmux -u attach -t "$SESSION_NAME"

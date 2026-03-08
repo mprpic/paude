@@ -440,30 +440,6 @@ See [`examples/README.md`](examples/README.md) for more configurations (Python, 
 | `postCreateCommand` | Run after first start |
 | `containerEnv` | Environment variables |
 
-### Python Virtual Environments
-
-Paude automatically detects Python venv directories (`.venv`, `venv`, etc.) and shadows them with empty tmpfs mounts. This allows you to:
-
-- Use your host venv on your Mac
-- Create a separate container venv inside paude
-- Share source code between both
-
-Add to your `paude.json` to auto-create the venv:
-
-```json
-{
-  "setup": "python -m venv .venv && .venv/bin/pip install -r requirements.txt"
-}
-```
-
-Configuration via the `venv` field:
-
-```json
-{"venv": "auto"}              // Default: auto-detect and shadow
-{"venv": "none"}              // Disable: share venvs (will be broken)
-{"venv": [".venv", "my-env"]} // Manual: specific directories to shadow
-```
-
 ### Verifying Configuration
 
 ```bash
