@@ -187,6 +187,139 @@ class TestParseConfig:
         config = parse_config(config_file)
         assert config.post_create_command == "npm && install"
 
+    def test_parses_devcontainer_features(self, tmp_path: Path):
+        """parse_config extracts features with options from devcontainer.json."""
+        config_file = tmp_path / ".devcontainer.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "image": "python:3.11",
+                    "features": {
+                        "ghcr.io/devcontainers/features/node:1": {"version": "20"},
+                        "ghcr.io/devcontainers/features/go:1": {},
+                    },
+                }
+            )
+        )
+
+        config = parse_config(config_file)
+        assert len(config.features) == 2
+        urls = {f.url for f in config.features}
+        assert "ghcr.io/devcontainers/features/node:1" in urls
+        assert "ghcr.io/devcontainers/features/go:1" in urls
+        node_feature = next(f for f in config.features if "node" in f.url)
+        assert node_feature.options == {"version": "20"}
+
+    def test_parses_devcontainer_container_env(self, tmp_path: Path):
+        """parse_config extracts containerEnv from devcontainer.json."""
+        config_file = tmp_path / ".devcontainer.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "image": "python:3.11",
+                    "containerEnv": {"FOO": "bar", "BAZ": "qux"},
+                }
+            )
+        )
+
+        config = parse_config(config_file)
+        assert config.container_env == {"FOO": "bar", "BAZ": "qux"}
+
+    def test_parses_post_create_command_string(self, tmp_path: Path):
+        """parse_config handles postCreateCommand as a plain string."""
+        config_file = tmp_path / ".devcontainer.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "image": "python:3.11",
+                    "postCreateCommand": "make setup && make install",
+                }
+            )
+        )
+
+        config = parse_config(config_file)
+        assert config.post_create_command == "make setup && make install"
+
+    def test_parses_build_args(self, tmp_path: Path):
+        """parse_config extracts build args from devcontainer.json."""
+        devcontainer_dir = tmp_path / ".devcontainer"
+        devcontainer_dir.mkdir()
+        config_file = devcontainer_dir / "devcontainer.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "build": {
+                        "dockerfile": "Dockerfile",
+                        "args": {"NODE_VERSION": "20", "DEBUG": "true"},
+                    }
+                }
+            )
+        )
+
+        config = parse_config(config_file)
+        assert config.build_args == {"NODE_VERSION": "20", "DEBUG": "true"}
+
+    def test_handles_absolute_dockerfile_path(self, tmp_path: Path):
+        """parse_config handles absolute dockerfile path without resolving relative."""
+        config_file = tmp_path / ".devcontainer.json"
+        config_file.write_text(
+            json.dumps({"build": {"dockerfile": "/opt/docker/Dockerfile"}})
+        )
+
+        config = parse_config(config_file)
+        assert config.dockerfile == Path("/opt/docker/Dockerfile")
+
+    def test_unknown_config_type_raises(self, tmp_path: Path):
+        """parse_config raises ConfigError for unknown file type."""
+        config_file = tmp_path / "unknown.yaml"
+        config_file.write_text('{"image": "python:3.11"}')
+
+        with pytest.raises(ConfigError, match="Unknown config file type"):
+            parse_config(config_file)
+
+    def test_handles_unreadable_file(self, tmp_path: Path):
+        """parse_config raises ConfigError for missing file."""
+        config_file = tmp_path / "paude.json"
+        # File doesn't exist
+
+        with pytest.raises(ConfigError, match="Cannot read"):
+            parse_config(config_file)
+
+    def test_parses_paude_json_with_build_config(self, tmp_path: Path):
+        """parse_config handles paude.json with dockerfile and build args."""
+        config_file = tmp_path / "paude.json"
+        dockerfile = tmp_path / "Dockerfile.custom"
+        dockerfile.write_text("FROM python:3.11")
+        config_file.write_text(
+            json.dumps(
+                {
+                    "base": "python:3.11",
+                    "build": {
+                        "dockerfile": "Dockerfile.custom",
+                        "args": {"PY_VER": "3.11"},
+                    },
+                }
+            )
+        )
+
+        config = parse_config(config_file)
+        assert config.dockerfile == tmp_path / "Dockerfile.custom"
+        assert config.build_args == {"PY_VER": "3.11"}
+        assert config.build_context == tmp_path
+
+    def test_parses_minimal_paude_json(self, tmp_path: Path):
+        """parse_config handles empty paude.json with defaults."""
+        config_file = tmp_path / "paude.json"
+        config_file.write_text("{}")
+
+        config = parse_config(config_file)
+        assert config.config_type == "paude"
+        assert config.base_image is None
+        assert config.dockerfile is None
+        assert config.packages == []
+        assert config.post_create_command is None
+        assert config.build_args == {}
+
 
 class TestGenerateWorkspaceDockerfile:
     """Tests for Dockerfile generation."""
