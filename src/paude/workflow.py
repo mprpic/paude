@@ -203,6 +203,12 @@ def harvest_session(
     typer.echo(f"Harvested changes to branch '{branch_name}'.", err=True)
 
     if create_pr:
+        # Fetch origin so --force-with-lease has current ref info
+        subprocess.run(
+            ["git", "fetch", "origin"],
+            capture_output=True,
+            cwd=workspace,
+        )
         typer.echo(f"Pushing '{branch_name}' to origin...", err=True)
         push_result = subprocess.run(
             ["git", "push", "--force-with-lease", "-u", "origin", branch_name],

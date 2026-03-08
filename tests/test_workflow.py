@@ -184,8 +184,9 @@ class TestHarvestSession:
         mock_list.return_value = [("paude-test", "ext::...")]
         mock_fetch.return_value = True
         mock_diff.return_value = " 2 files changed\n"
-        # checkout -B succeeds, push succeeds, pr view finds existing
+        # checkout -B, fetch origin, push, pr view
         mock_run.side_effect = [
+            CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
             CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
             CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
             CompletedProcess(
@@ -195,7 +196,10 @@ class TestHarvestSession:
 
         harvest_session("test", "my-branch", create_pr=True)
 
-        push_call = mock_run.call_args_list[1]
+        # fetch origin is call [1], push is call [2]
+        fetch_call = mock_run.call_args_list[1]
+        assert fetch_call[0][0] == ["git", "fetch", "origin"]
+        push_call = mock_run.call_args_list[2]
         push_args = push_call[0][0]
         assert "--force-with-lease" in push_args
 
