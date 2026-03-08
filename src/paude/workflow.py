@@ -257,7 +257,12 @@ def status_sessions(
 ) -> None:
     """Display enriched status for all sessions."""
     from paude.session_discovery import collect_all_sessions
-    from paude.session_status import SessionActivity, get_session_activity
+    from paude.session_status import (
+        SessionActivity,
+        WorkSummary,
+        format_work_summary,
+        get_session_enrichment,
+    )
 
     all_sessions = collect_all_sessions(
         openshift_context=openshift_context,
@@ -268,18 +273,19 @@ def status_sessions(
         typer.echo("No sessions found.")
         return
 
-    rows: list[tuple[Session, str, SessionActivity | None]] = []
+    rows: list[tuple[Session, str, SessionActivity | None, WorkSummary | None]] = []
     for session, backend in all_sessions:
         activity: SessionActivity | None = None
+        summary: WorkSummary | None = None
         if session.status == "running":
             try:
-                activity = get_session_activity(backend, session.name)
+                activity, summary = get_session_enrichment(backend, session.name)
             except Exception:  # noqa: S110
                 pass
-        rows.append((session, session.backend_type, activity))
+        rows.append((session, session.backend_type, activity, summary))
 
     def _sort_key(
-        r: tuple[Session, str, SessionActivity | None],
+        r: tuple[Session, str, SessionActivity | None, WorkSummary | None],
     ) -> tuple[int, float]:
         status_order = 0 if r[0].status == "running" else 1
         activity = r[2]
@@ -292,12 +298,12 @@ def status_sessions(
 
     cols = (
         f"{'SESSION':<20} {'PROJECT':<15} {'BACKEND':<10} "
-        f"{'STATUS':<10} {'ACTIVITY':<10} {'STATE'}"
+        f"{'STATUS':<10} {'ACTIVITY':<10} {'STATE':<10} {'SUMMARY'}"
     )
     typer.echo(cols)
     typer.echo("-" * len(cols))
 
-    for session, backend_type, activity in rows:
+    for session, backend_type, activity, summary in rows:
         project = session.workspace.name if session.workspace else ""
         status = session.status
         act_str = activity.last_activity if activity else ""
@@ -307,10 +313,11 @@ def status_sessions(
             state_str = "Stopped"
         else:
             state_str = ""
+        summary_str = format_work_summary(summary)
 
         typer.echo(
             f"{session.name:<20} {project:<15} {backend_type:<10} "
-            f"{status:<10} {act_str:<10} {state_str}"
+            f"{status:<10} {act_str:<10} {state_str:<10} {summary_str}"
         )
 
 
