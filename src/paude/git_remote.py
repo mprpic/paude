@@ -11,12 +11,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+from paude.constants import CONTAINER_HOME, CONTAINER_WORKSPACE
+
 
 def build_openshift_remote_url(
     pod_name: str,
     namespace: str,
     context: str | None = None,
-    workspace_path: str = "/pvc/workspace",
+    workspace_path: str = CONTAINER_WORKSPACE,
 ) -> str:
     """Build a git ext:: remote URL for an OpenShift pod.
 
@@ -44,7 +46,7 @@ def build_openshift_remote_url(
 
 def build_podman_remote_url(
     container_name: str,
-    workspace_path: str = "/pvc/workspace",
+    workspace_path: str = CONTAINER_WORKSPACE,
 ) -> str:
     """Build a git ext:: remote URL for a Podman container.
 
@@ -228,9 +230,10 @@ def initialize_container_workspace_podman(
         True if successful, False if failed.
     """
     quoted_branch = shlex.quote(branch)
+    ws = CONTAINER_WORKSPACE
     init_cmd = (
-        f"test -d /pvc/workspace/.git || git init -b {quoted_branch} /pvc/workspace && "
-        "git -C /pvc/workspace config receive.denyCurrentBranch updateInstead"
+        f"test -d {ws}/.git || git init -b {quoted_branch} {ws} && "
+        f"git -C {ws} config receive.denyCurrentBranch updateInstead"
     )
     result = subprocess.run(
         ["podman", "exec", container_name, "bash", "-c", init_cmd],
@@ -261,9 +264,10 @@ def initialize_container_workspace_openshift(
         True if successful, False if failed.
     """
     quoted_branch = shlex.quote(branch)
+    ws = CONTAINER_WORKSPACE
     init_cmd = (
-        f"test -d /pvc/workspace/.git || git init -b {quoted_branch} /pvc/workspace && "
-        "git -C /pvc/workspace config receive.denyCurrentBranch updateInstead"
+        f"test -d {ws}/.git || git init -b {quoted_branch} {ws} && "
+        f"git -C {ws} config receive.denyCurrentBranch updateInstead"
     )
     oc_cmd = ["oc"]
     if context:
@@ -412,8 +416,8 @@ def set_origin_in_container_podman(container_name: str, origin_url: str) -> bool
     """
     quoted_url = shlex.quote(origin_url)
     cmd = (
-        f"git -C /pvc/workspace remote add origin {quoted_url} 2>/dev/null || "
-        f"git -C /pvc/workspace remote set-url origin {quoted_url}"
+        f"git -C {CONTAINER_WORKSPACE} remote add origin {quoted_url} 2>/dev/null || "
+        f"git -C {CONTAINER_WORKSPACE} remote set-url origin {quoted_url}"
     )
     result = subprocess.run(
         ["podman", "exec", container_name, "bash", "-c", cmd],
@@ -447,8 +451,8 @@ def set_origin_in_container_openshift(
     """
     quoted_url = shlex.quote(origin_url)
     cmd = (
-        f"git -C /pvc/workspace remote add origin {quoted_url} 2>/dev/null || "
-        f"git -C /pvc/workspace remote set-url origin {quoted_url}"
+        f"git -C {CONTAINER_WORKSPACE} remote add origin {quoted_url} 2>/dev/null || "
+        f"git -C {CONTAINER_WORKSPACE} remote set-url origin {quoted_url}"
     )
     oc_cmd = ["oc"]
     if context:
@@ -482,7 +486,7 @@ def fetch_tags_in_container_podman(container_name: str) -> bool:
             container_name,
             "bash",
             "-c",
-            "git -C /pvc/workspace fetch origin --tags",
+            f"git -C {CONTAINER_WORKSPACE} fetch origin --tags",
         ],
         capture_output=True,
         text=True,
@@ -517,7 +521,7 @@ def fetch_tags_in_container_openshift(
             "--",
             "bash",
             "-c",
-            "git -C /pvc/workspace fetch origin --tags",
+            f"git -C {CONTAINER_WORKSPACE} fetch origin --tags",
         ]
     )
 
@@ -541,8 +545,8 @@ def setup_precommit_in_container_podman(container_name: str) -> bool:
         True if successful, False if failed.
     """
     cmd = (
-        "test -f /pvc/workspace/.pre-commit-config.yaml && "
-        "cd /pvc/workspace && pre-commit install"
+        f"test -f {CONTAINER_WORKSPACE}/.pre-commit-config.yaml && "
+        f"cd {CONTAINER_WORKSPACE} && pre-commit install"
     )
     result = subprocess.run(
         ["podman", "exec", container_name, "bash", "-c", cmd],
@@ -570,9 +574,9 @@ def setup_precommit_in_container_openshift(
         True if successful, False if failed.
     """
     cmd = (
-        '[[ -z "$HOME" || "$HOME" == "/" ]] && export HOME=/home/paude; '
-        "test -f /pvc/workspace/.pre-commit-config.yaml && "
-        "cd /pvc/workspace && pre-commit install"
+        f'[[ -z "$HOME" || "$HOME" == "/" ]] && export HOME={CONTAINER_HOME}; '
+        f"test -f {CONTAINER_WORKSPACE}/.pre-commit-config.yaml && "
+        f"cd {CONTAINER_WORKSPACE} && pre-commit install"
     )
     oc_cmd = ["oc"]
     if context:

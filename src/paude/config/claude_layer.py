@@ -7,6 +7,8 @@ due to licensing restrictions that prohibit redistribution.
 
 from __future__ import annotations
 
+from paude.constants import CONTAINER_ENTRYPOINT, CONTAINER_HOME
+
 
 def generate_claude_layer_dockerfile() -> str:
     """Generate a Dockerfile that adds Claude Code to a base image.
@@ -24,7 +26,7 @@ def generate_claude_layer_dockerfile() -> str:
     lines.append("")
     lines.append("# Install Claude Code (as paude user)")
     lines.append("USER paude")
-    lines.append("WORKDIR /home/paude")
+    lines.append(f"WORKDIR {CONTAINER_HOME}")
     lines.append("RUN curl -fsSL https://claude.ai/install.sh | bash")
 
     lines.append("")
@@ -33,16 +35,16 @@ def generate_claude_layer_dockerfile() -> str:
 
     lines.append("")
     lines.append("# Ensure claude is in PATH")
-    lines.append('ENV PATH="/home/paude/.local/bin:$PATH"')
+    lines.append(f'ENV PATH="{CONTAINER_HOME}/.local/bin:$PATH"')
 
     lines.append("")
     lines.append("# Fix permissions for OpenShift arbitrary UID compatibility")
     lines.append("USER root")
-    lines.append("RUN chmod -R g+rwX /home/paude")
+    lines.append(f"RUN chmod -R g+rwX {CONTAINER_HOME}")
 
     lines.append("")
     lines.append("USER paude")
-    lines.append("WORKDIR /home/paude")
-    lines.append('ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]')
+    lines.append(f"WORKDIR {CONTAINER_HOME}")
+    lines.append(f'ENTRYPOINT ["{CONTAINER_ENTRYPOINT}"]')
 
     return "\n".join(lines)

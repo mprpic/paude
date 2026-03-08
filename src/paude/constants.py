@@ -1,0 +1,8 @@
+"""Shared constants for paude."""
+
+CONTAINER_WORKSPACE = "/pvc/workspace"
+CONTAINER_HOME = "/home/paude"
+CONTAINER_ENTRYPOINT = "/usr/local/bin/entrypoint.sh"
+GCP_ADC_FILENAME = "application_default_credentials.json"
+GCP_ADC_SECRET_NAME = "paude-gcp-adc"  # noqa: S105
+GCP_ADC_TARGET = f"{CONTAINER_HOME}/.config/gcloud/{GCP_ADC_FILENAME}"

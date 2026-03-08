@@ -11,6 +11,13 @@ from typing import Any
 
 from paude.backends.base import Session, SessionConfig
 from paude.backends.shared import SQUID_BLOCKED_LOG_PATH, decode_path, encode_path
+from paude.constants import (
+    CONTAINER_ENTRYPOINT,
+    CONTAINER_WORKSPACE,
+    GCP_ADC_FILENAME,
+    GCP_ADC_SECRET_NAME,
+    GCP_ADC_TARGET,
+)
 from paude.container.network import NetworkManager
 from paude.container.runner import (
     PAUDE_LABEL_APP,
@@ -185,17 +192,13 @@ class PodmanBackend:
         Returns:
             Secret spec string for --secret, or None if ADC file missing.
         """
-        adc_file = "application_default_credentials.json"
-        adc_path = Path.home() / ".config" / "gcloud" / adc_file
+        adc_path = Path.home() / ".config" / "gcloud" / GCP_ADC_FILENAME
         if not adc_path.is_file():
             return None
 
-        secret_name = "paude-gcp-adc"  # noqa: S105
-        target = "/home/paude/.config/gcloud/application_default_credentials.json"
+        self._runner.create_secret(GCP_ADC_SECRET_NAME, adc_path)
 
-        self._runner.create_secret(secret_name, adc_path)
-
-        return f"{secret_name},target={target}"
+        return f"{GCP_ADC_SECRET_NAME},target={GCP_ADC_TARGET}"
 
     def create_session(self, config: SessionConfig) -> Session:
         """Create a new session (does not start it).
@@ -275,7 +278,7 @@ class PodmanBackend:
 
         # Prepare environment
         env = dict(config.env)
-        env["PAUDE_WORKSPACE"] = "/pvc/workspace"
+        env["PAUDE_WORKSPACE"] = CONTAINER_WORKSPACE
 
         # Add proxy environment variables
         if use_proxy:
@@ -317,7 +320,7 @@ class PodmanBackend:
                 self._runner.remove_container(proxy_name, force=True)
                 self._network_manager.remove_network(self._network_name(session_name))
             self._volume_manager.remove_volume(volume_name, force=True)
-            self._runner.remove_secret("paude-gcp-adc")
+            self._runner.remove_secret(GCP_ADC_SECRET_NAME)
             raise
 
         print(f"Session '{session_name}' created (stopped).", file=sys.stderr)
@@ -407,7 +410,7 @@ class PodmanBackend:
         # Remove volume and secret
         print(f"Removing volume {volume_name}...", file=sys.stderr)
         self._volume_manager.remove_volume(volume_name, force=True)
-        self._runner.remove_secret("paude-gcp-adc")
+        self._runner.remove_secret(GCP_ADC_SECRET_NAME)
 
         print(f"Session '{name}' deleted.", file=sys.stderr)
 
@@ -536,7 +539,7 @@ class PodmanBackend:
         extra_env = {"GH_TOKEN": github_token} if github_token else None
         return self._runner.attach_container(
             container_name,
-            entrypoint="/usr/local/bin/entrypoint.sh",
+            entrypoint=CONTAINER_ENTRYPOINT,
             extra_env=extra_env,
         )
 
@@ -611,7 +614,7 @@ class PodmanBackend:
         extra_env = {"GH_TOKEN": github_token} if github_token else None
         return self._runner.attach_container(
             container_name,
-            entrypoint="/usr/local/bin/entrypoint.sh",
+            entrypoint=CONTAINER_ENTRYPOINT,
             extra_env=extra_env,
         )
 
