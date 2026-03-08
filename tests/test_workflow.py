@@ -184,8 +184,9 @@ class TestHarvestSession:
         mock_list.return_value = [("paude-test", "ext::...")]
         mock_fetch.return_value = True
         mock_diff.return_value = " 2 files changed\n"
-        # checkout -B succeeds, push succeeds, pr view finds existing
+        # checkout -B, fetch origin, push, pr view
         mock_run.side_effect = [
+            CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
             CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
             CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
             CompletedProcess(
@@ -195,9 +196,47 @@ class TestHarvestSession:
 
         harvest_session("test", "my-branch", create_pr=True)
 
-        push_call = mock_run.call_args_list[1]
+        # fetch origin is call [1], push is call [2]
+        fetch_call = mock_run.call_args_list[1]
+        assert fetch_call[0][0] == ["git", "fetch", "origin"]
+        push_call = mock_run.call_args_list[2]
         push_args = push_call[0][0]
         assert "--force-with-lease" in push_args
+
+    @patch("paude.workflow.subprocess.run")
+    @patch("paude.git_remote.git_diff_stat")
+    @patch("paude.git_remote.git_fetch_from_remote")
+    @patch("paude.git_remote.list_paude_remotes")
+    @patch("paude.cli.find_session_backend")
+    def test_harvest_creates_pr_when_previous_merged(
+        self,
+        mock_find: MagicMock,
+        mock_list: MagicMock,
+        mock_fetch: MagicMock,
+        mock_diff: MagicMock,
+        mock_run: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """harvest creates a new PR when previous PR for branch was merged."""
+        self._setup_mocks(mock_find, tmp_path)
+        mock_list.return_value = [("paude-test", "ext::...")]
+        mock_fetch.return_value = True
+        mock_diff.return_value = " 2 files changed\n"
+        # checkout -B, fetch origin, push, pr list (no open PRs), pr create
+        mock_run.side_effect = [
+            CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+            CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+            CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+            CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+            CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+        ]
+
+        harvest_session("test", "my-branch", create_pr=True)
+
+        # pr list returns empty → should call gh pr create
+        pr_create_call = mock_run.call_args_list[4]
+        pr_create_args = pr_create_call[0][0]
+        assert pr_create_args[:3] == ["gh", "pr", "create"]
 
 
 class TestStatusSessions:

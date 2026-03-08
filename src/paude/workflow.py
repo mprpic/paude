@@ -10,6 +10,7 @@ from pathlib import Path
 import typer
 
 from paude.backends.base import Backend, Session
+from paude.constants import CONTAINER_HOME
 
 _PROTECTED_BRANCH_PATTERNS = frozenset(
     {
@@ -202,6 +203,12 @@ def harvest_session(
     typer.echo(f"Harvested changes to branch '{branch_name}'.", err=True)
 
     if create_pr:
+        # Fetch origin so --force-with-lease has current ref info
+        subprocess.run(
+            ["git", "fetch", "origin"],
+            capture_output=True,
+            cwd=workspace,
+        )
         typer.echo(f"Pushing '{branch_name}' to origin...", err=True)
         push_result = subprocess.run(
             ["git", "push", "--force-with-lease", "-u", "origin", branch_name],
@@ -211,9 +218,21 @@ def harvest_session(
             typer.echo("Error: Failed to push branch to origin.", err=True)
             raise typer.Exit(1)
 
-        # Check if a PR already exists for this branch
+        # Check if an open PR already exists for this branch
         view_result = subprocess.run(
-            ["gh", "pr", "view", branch_name, "--json", "url", "-q", ".url"],
+            [
+                "gh",
+                "pr",
+                "list",
+                "--head",
+                branch_name,
+                "--state",
+                "open",
+                "--json",
+                "url",
+                "-q",
+                ".[0].url",
+            ],
             capture_output=True,
             text=True,
             cwd=workspace,
@@ -329,13 +348,14 @@ def reset_session(
         typer.echo("Clearing conversation history and sending /clear...", err=True)
         # Delete conversation history but preserve per-project settings
         # (settings.local.json, CLAUDE.md), then send /clear to Claude
+        claude_dir = f"{CONTAINER_HOME}/.claude"
         clear_cmd = (
-            "find /home/paude/.claude/projects/ "
+            f"find {claude_dir}/projects/ "
             r"\( -name '*.jsonl' -o -name 'sessions-index.json' \) "
             "-delete 2>/dev/null; "
-            "find /home/paude/.claude/projects/ -mindepth 2 -maxdepth 2 -type d "
+            f"find {claude_dir}/projects/ -mindepth 2 -maxdepth 2 -type d "
             "-exec rm -rf {} + 2>/dev/null; "
-            "rm -rf /home/paude/.claude/todos/; "
+            f"rm -rf {claude_dir}/todos/; "
             'tmux send-keys -t claude "/clear" Enter'
         )
         backend.exec_in_session(session_name, clear_cmd)

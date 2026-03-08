@@ -15,6 +15,7 @@ from paude.backends.openshift.oc import (
     OcClient,
 )
 from paude.backends.openshift.resources import CLAUDE_EXCLUDES
+from paude.constants import CONTAINER_HOME, GCP_ADC_FILENAME
 
 
 class ConfigSyncer:
@@ -177,7 +178,7 @@ class ConfigSyncer:
 
         gcloud_dir = home / ".config" / "gcloud"
         gcloud_files = [
-            "application_default_credentials.json",
+            GCP_ADC_FILENAME,
             "credentials.db",
             "access_tokens.db",
         ]
@@ -242,7 +243,7 @@ class ConfigSyncer:
         config_path = "/credentials"
         gcloud_dir = home / ".config" / "gcloud"
         gcloud_files = [
-            "application_default_credentials.json",
+            GCP_ADC_FILENAME,
             "credentials.db",
             "access_tokens.db",
         ]
@@ -429,7 +430,7 @@ class ConfigSyncer:
         Claude Code writes plugin paths as absolute host paths. These need
         to be rewritten to container paths.
         """
-        container_plugins_path = "/home/paude/.claude/plugins"
+        container_plugins_path = f"{CONTAINER_HOME}/.claude/plugins"
 
         installed_plugins = f"{config_path}/claude/plugins/installed_plugins.json"
         jq_expr = (

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from paude.constants import CONTAINER_HOME
+
 
 def resolve_path(path: Path) -> Path | None:
     """Resolve symlinks to physical path.
@@ -59,7 +61,7 @@ def build_mounts(home: Path) -> list[str]:
     gitconfig = home / ".gitconfig"
     resolved_gitconfig = resolve_path(gitconfig)
     if resolved_gitconfig and resolved_gitconfig.is_file():
-        mounts.extend(["-v", f"{resolved_gitconfig}:/home/paude/.gitconfig:ro"])
+        mounts.extend(["-v", f"{resolved_gitconfig}:{CONTAINER_HOME}/.gitconfig:ro"])
 
     # claude.json seed (ro)
     claude_json = home / ".claude.json"

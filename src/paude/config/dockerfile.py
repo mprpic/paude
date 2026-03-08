@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from paude.config.models import PaudeConfig
+from paude.constants import CONTAINER_ENTRYPOINT, CONTAINER_HOME
 
 
 def generate_pip_install_dockerfile(
@@ -36,22 +37,22 @@ def generate_pip_install_dockerfile(
         lines.append("")
         lines.append("# Install Claude Code (as paude user)")
         lines.append("USER paude")
-        lines.append("WORKDIR /home/paude")
+        lines.append(f"WORKDIR {CONTAINER_HOME}")
         lines.append("RUN curl -fsSL https://claude.ai/install.sh | bash")
         lines.append("")
         lines.append("# Disable auto-updates (version controlled by image rebuild)")
         lines.append("ENV DISABLE_AUTOUPDATER=1")
         lines.append("")
         lines.append("# Ensure claude is in PATH")
-        lines.append('ENV PATH="/home/paude/.local/bin:$PATH"')
+        lines.append(f'ENV PATH="{CONTAINER_HOME}/.local/bin:$PATH"')
         lines.append("")
         lines.append("# Fix permissions for OpenShift arbitrary UID compatibility")
         lines.append("USER root")
-        lines.append("RUN chmod -R g+rwX /home/paude")
+        lines.append(f"RUN chmod -R g+rwX {CONTAINER_HOME}")
         lines.append("")
         lines.append("# Switch back to paude user for runtime")
         lines.append("USER paude")
-        lines.append("WORKDIR /home/paude")
+        lines.append(f"WORKDIR {CONTAINER_HOME}")
 
     if not include_claude_install:
         # Add minimal structure for feature injection compatibility.
@@ -61,7 +62,7 @@ def generate_pip_install_dockerfile(
         lines.append("USER root")
         lines.append("")
         lines.append("USER paude")
-        lines.append("WORKDIR /home/paude")
+        lines.append(f"WORKDIR {CONTAINER_HOME}")
 
     return "\n".join(lines)
 
@@ -149,15 +150,15 @@ RUN if command -v apt-get >/dev/null 2>&1; then \\
     )
     lines.append(
         "RUN (id paude >/dev/null 2>&1 || useradd -m -s /bin/bash -g 0 paude 2>/dev/null || adduser -D -s /bin/bash -G root paude) && "
-        "chmod -R g+rwX /home/paude && "
-        "mkdir -p /home/paude/.claude /home/paude/.config && "
-        "chmod -R g+rwX /home/paude/.claude /home/paude/.config"
+        f"chmod -R g+rwX {CONTAINER_HOME} && "
+        f"mkdir -p {CONTAINER_HOME}/.claude {CONTAINER_HOME}/.config && "
+        f"chmod -R g+rwX {CONTAINER_HOME}/.claude {CONTAINER_HOME}/.config"
     )
 
     lines.append("")
     lines.append("# Install Claude Code using native installer (as paude user)")
     lines.append("USER paude")
-    lines.append("WORKDIR /home/paude")
+    lines.append(f"WORKDIR {CONTAINER_HOME}")
     lines.append("RUN curl -fsSL https://claude.ai/install.sh | bash")
 
     lines.append("")
@@ -166,15 +167,15 @@ RUN if command -v apt-get >/dev/null 2>&1; then \\
 
     lines.append("")
     lines.append("# Ensure claude is in PATH")
-    lines.append('ENV PATH="/home/paude/.local/bin:$PATH"')
+    lines.append(f'ENV PATH="{CONTAINER_HOME}/.local/bin:$PATH"')
 
     lines.append("")
     lines.append("# Copy entrypoints (requires root)")
     lines.append("USER root")
-    lines.append("COPY entrypoint.sh /usr/local/bin/entrypoint.sh")
+    lines.append(f"COPY entrypoint.sh {CONTAINER_ENTRYPOINT}")
     lines.append("COPY entrypoint-session.sh /usr/local/bin/entrypoint-session.sh")
     lines.append(
-        "RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/entrypoint-session.sh"
+        f"RUN chmod +x {CONTAINER_ENTRYPOINT} /usr/local/bin/entrypoint-session.sh"
     )
 
     lines.append("")
@@ -182,11 +183,11 @@ RUN if command -v apt-get >/dev/null 2>&1; then \\
     lines.append(
         "# Must be done as root after Claude install, for OpenShift arbitrary UID"
     )
-    lines.append("RUN chmod -R g+rwX /home/paude")
+    lines.append(f"RUN chmod -R g+rwX {CONTAINER_HOME}")
 
     lines.append("")
     lines.append("USER paude")
-    lines.append("WORKDIR /home/paude")
-    lines.append('ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]')
+    lines.append(f"WORKDIR {CONTAINER_HOME}")
+    lines.append(f'ENTRYPOINT ["{CONTAINER_ENTRYPOINT}"]')
 
     return "\n".join(lines)

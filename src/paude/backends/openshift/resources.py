@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from paude.backends.shared import encode_path
+from paude.constants import CONTAINER_WORKSPACE
 
 CLAUDE_EXCLUDES = [
     # Session-specific files (not useful on remote)
@@ -169,7 +170,7 @@ class StatefulSetBuilder:
     def _build_container_spec(self) -> dict[str, Any]:
         """Build the container spec for the pod template."""
         env_list = [{"name": k, "value": v} for k, v in self._env.items()]
-        env_list.append({"name": "PAUDE_WORKSPACE", "value": "/pvc/workspace"})
+        env_list.append({"name": "PAUDE_WORKSPACE", "value": CONTAINER_WORKSPACE})
 
         # Allow override for testing with locally-loaded images in Kind
         image_pull_policy = os.environ.get("PAUDE_IMAGE_PULL_POLICY", "Always")
