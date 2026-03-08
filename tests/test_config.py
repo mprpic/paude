@@ -143,54 +143,6 @@ class TestParseConfig:
         with pytest.raises(ConfigError):
             parse_config(config_file)
 
-    def test_parses_venv_auto(self, tmp_path: Path):
-        """parse_config handles venv: auto."""
-        config_file = tmp_path / "paude.json"
-        config_file.write_text(json.dumps({"venv": "auto"}))
-
-        config = parse_config(config_file)
-        assert config.venv == "auto"
-
-    def test_parses_venv_none(self, tmp_path: Path):
-        """parse_config handles venv: none."""
-        config_file = tmp_path / "paude.json"
-        config_file.write_text(json.dumps({"venv": "none"}))
-
-        config = parse_config(config_file)
-        assert config.venv == "none"
-
-    def test_parses_venv_list(self, tmp_path: Path):
-        """parse_config handles venv as list of directories."""
-        config_file = tmp_path / "paude.json"
-        config_file.write_text(json.dumps({"venv": [".venv", "my-custom-venv"]}))
-
-        config = parse_config(config_file)
-        assert config.venv == [".venv", "my-custom-venv"]
-
-    def test_venv_defaults_to_auto(self, tmp_path: Path):
-        """parse_config defaults venv to auto when not specified."""
-        config_file = tmp_path / "paude.json"
-        config_file.write_text(json.dumps({"base": "python:3.11"}))
-
-        config = parse_config(config_file)
-        assert config.venv == "auto"
-
-    def test_venv_invalid_value_raises_error(self, tmp_path: Path):
-        """parse_config raises error for invalid venv value."""
-        config_file = tmp_path / "paude.json"
-        config_file.write_text(json.dumps({"venv": "invalid"}))
-
-        with pytest.raises(ConfigError, match="Invalid venv config"):
-            parse_config(config_file)
-
-    def test_venv_list_with_non_string_raises_error(self, tmp_path: Path):
-        """parse_config raises error for venv list with non-string item."""
-        config_file = tmp_path / "paude.json"
-        config_file.write_text(json.dumps({"venv": [".venv", 123]}))
-
-        with pytest.raises(ConfigError, match="list items must be strings"):
-            parse_config(config_file)
-
     def test_pip_install_deprecated_warning(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ):
@@ -274,7 +226,6 @@ class TestGenerateWorkspaceDockerfile:
         dockerfile = generate_workspace_dockerfile(config)
 
         assert "/opt/workspace-src" not in dockerfile
-        assert "/opt/venv" not in dockerfile
 
     def test_includes_essential_utilities(self):
         """generate_workspace_dockerfile includes essential CLI utilities."""

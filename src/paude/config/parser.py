@@ -135,9 +135,6 @@ def _parse_paude_json(config_file: Path, data: dict[str, Any]) -> PaudeConfig:
 
     Returns:
         Parsed configuration.
-
-    Raises:
-        ConfigError: If venv config is invalid.
     """
     config_dir = config_file.parent
 
@@ -174,16 +171,6 @@ def _parse_paude_json(config_file: Path, data: dict[str, Any]) -> PaudeConfig:
     # Extract build args
     build_args = build_config.get("args", {})
 
-    venv_config = data.get("venv", "auto")
-    if venv_config not in ("auto", "none") and not isinstance(venv_config, list):
-        raise ConfigError(
-            "Invalid venv config: expected 'auto', 'none', or list of directories"
-        )
-    if isinstance(venv_config, list):
-        for item in venv_config:
-            if not isinstance(item, str):
-                raise ConfigError("Invalid venv config: list items must be strings")
-
     if "pip_install" in data:
         print(
             "Warning: 'pip_install' is deprecated and ignored.",
@@ -203,7 +190,6 @@ def _parse_paude_json(config_file: Path, data: dict[str, Any]) -> PaudeConfig:
         build_args=build_args,
         packages=packages,
         post_create_command=setup_command,
-        venv=venv_config,
     )
 
 

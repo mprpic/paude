@@ -6,8 +6,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-VenvMode = Literal["auto", "none"] | list[str]
-
 
 @dataclass
 class FeatureSpec:
@@ -51,6 +49,3 @@ class PaudeConfig:
 
     # Build arguments
     build_args: dict[str, str] = field(default_factory=dict)
-
-    # venv isolation mode: "auto" (default), "none", or list of directory names
-    venv: VenvMode = "auto"

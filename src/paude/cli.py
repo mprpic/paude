@@ -451,7 +451,7 @@ def session_create(
     from paude.config import detect_config, parse_config
     from paude.container import ImageManager
     from paude.environment import build_environment
-    from paude.mounts import build_mounts, build_venv_mounts
+    from paude.mounts import build_mounts
 
     workspace = Path.cwd()
     home = Path.home()
@@ -494,10 +494,7 @@ def session_create(
             raise typer.Exit(1) from None
 
         # Build mounts
-        mounts = build_mounts(workspace, home)
-        venv_mode = config.venv if config else "auto"
-        venv_mounts = build_venv_mounts(workspace, venv_mode)
-        mounts.extend(venv_mounts)
+        mounts = build_mounts(home)
 
         # Expand allowed domains (default to ["default"] if not specified)
         from paude.domains import (
