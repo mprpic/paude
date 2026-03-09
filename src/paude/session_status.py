@@ -9,6 +9,129 @@ from paude.backends.base import Backend
 
 
 @dataclass
+class WorkSummary:
+    """Git-derived summary of what a session is working on.
+
+    Attributes:
+        branch: Current branch name (or "HEAD" if detached).
+        commits_ahead: Number of commits ahead of origin/main.
+        latest_subject: Subject of the most recent commit ahead of origin/main.
+    """
+
+    branch: str
+    commits_ahead: int
+    latest_subject: str
+
+
+_COMBINED_QUERY_CMD = (
+    "tmux list-windows -t claude"
+    " -F '#{window_activity}' 2>/dev/null; true"
+    " && cd /pvc/workspace"
+    ' && echo "BRANCH:$(git rev-parse --abbrev-ref HEAD'
+    ' 2>/dev/null)"'
+    ' && echo "AHEAD:$(git rev-list --count'
+    ' origin/main..HEAD 2>/dev/null)"'
+    ' && echo "SUBJECT:$(git log --oneline -1'
+    ' --format=%s origin/main..HEAD 2>/dev/null)"'
+)
+
+
+def get_session_enrichment(
+    backend: Backend, session_name: str
+) -> tuple[SessionActivity, WorkSummary | None]:
+    """Query tmux and git state in a single exec call.
+
+    Combines activity and work summary queries to minimize
+    remote execution overhead (one exec instead of two).
+
+    Args:
+        backend: Backend instance with exec_in_session method.
+        session_name: Session name.
+
+    Returns:
+        Tuple of (SessionActivity, WorkSummary or None).
+    """
+    rc, output, _ = backend.exec_in_session(session_name, _COMBINED_QUERY_CMD)
+
+    lines = output.strip().splitlines() if rc == 0 else []
+
+    # First line(s) before any tagged output are tmux timestamps
+    activity_ts = ""
+    branch = ""
+    ahead = 0
+    subject = ""
+
+    for line in lines:
+        if line.startswith("BRANCH:"):
+            branch = line[len("BRANCH:") :].strip()
+        elif line.startswith("AHEAD:"):
+            try:
+                ahead = int(line[len("AHEAD:") :].strip())
+            except ValueError:
+                ahead = 0
+        elif line.startswith("SUBJECT:"):
+            subject = line[len("SUBJECT:") :].strip()
+        elif not activity_ts:
+            activity_ts = line.strip()
+
+    activity = parse_activity(activity_ts)
+    summary = (
+        WorkSummary(branch=branch, commits_ahead=ahead, latest_subject=subject)
+        if branch
+        else None
+    )
+
+    return activity, summary
+
+
+def format_work_summary(summary: WorkSummary | None, max_width: int = 40) -> str:
+    """Format a WorkSummary into a display string.
+
+    Args:
+        summary: WorkSummary to format, or None.
+        max_width: Maximum width for the output string.
+
+    Returns:
+        Formatted string for display in the status table.
+    """
+    if summary is None:
+        return ""
+
+    if summary.branch == "HEAD":
+        return "detached"
+
+    is_default = summary.branch in ("main", "master")
+
+    prefix_parts: list[str] = []
+    if not is_default:
+        prefix_parts.append(summary.branch)
+    if summary.latest_subject:
+        prefix_parts.append(summary.latest_subject)
+
+    suffix = f"(+{summary.commits_ahead})" if summary.commits_ahead > 0 else ""
+
+    if not prefix_parts and not suffix:
+        return ""
+
+    prefix = " ".join(prefix_parts)
+    if prefix and suffix:
+        text = f"{prefix} {suffix}"
+    else:
+        text = prefix or suffix
+
+    if len(text) > max_width:
+        # Truncate prefix but preserve the (+N) suffix
+        suffix_with_space = f" {suffix}" if suffix else ""
+        avail = max_width - len(suffix_with_space) - 3  # 3 for "..."
+        if avail > 0:
+            text = prefix[:avail] + "..." + suffix_with_space
+        else:
+            text = text[:max_width]
+
+    return text
+
+
+@dataclass
 class SessionActivity:
     """Activity information for a running session.
 

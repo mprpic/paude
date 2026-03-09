@@ -242,16 +242,16 @@ class TestHarvestSession:
 class TestStatusSessions:
     """Tests for status_sessions."""
 
-    @patch("paude.session_status.get_session_activity")
+    @patch("paude.session_status.get_session_enrichment")
     @patch("paude.session_discovery.collect_all_sessions")
     def test_shows_sessions(
         self,
         mock_collect: MagicMock,
-        mock_activity: MagicMock,
+        mock_enrichment: MagicMock,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         from paude.backends.base import Session
-        from paude.session_status import SessionActivity
+        from paude.session_status import SessionActivity, WorkSummary
 
         mock_session = Session(
             name="test-session",
@@ -262,8 +262,13 @@ class TestStatusSessions:
         )
         mock_backend = MagicMock()
         mock_collect.return_value = [(mock_session, mock_backend)]
-        mock_activity.return_value = SessionActivity(
-            last_activity="2m ago", state="Active", elapsed_seconds=120
+        mock_enrichment.return_value = (
+            SessionActivity(
+                last_activity="2m ago", state="Active", elapsed_seconds=120
+            ),
+            WorkSummary(
+                branch="feat-auth", commits_ahead=2, latest_subject="Add OAuth"
+            ),
         )
 
         status_sessions()
@@ -272,6 +277,9 @@ class TestStatusSessions:
         assert "test-session" in captured.out
         assert "Active" in captured.out
         assert "myproject" in captured.out
+        assert "SUMMARY" in captured.out
+        assert "feat-auth Add OAuth (+2)" in captured.out
+        assert "STATUS" not in captured.out
 
     @patch("paude.session_discovery.collect_all_sessions")
     def test_no_sessions(
@@ -286,12 +294,12 @@ class TestStatusSessions:
         captured = capsys.readouterr()
         assert "No sessions found" in captured.out
 
-    @patch("paude.session_status.get_session_activity")
+    @patch("paude.session_status.get_session_enrichment")
     @patch("paude.session_discovery.collect_all_sessions")
-    def test_stopped_session_shows_stopped(
+    def test_stopped_sessions_excluded(
         self,
         mock_collect: MagicMock,
-        mock_activity: MagicMock,
+        mock_enrichment: MagicMock,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         from paude.backends.base import Session
@@ -308,16 +316,16 @@ class TestStatusSessions:
         status_sessions()
 
         captured = capsys.readouterr()
-        assert "Stopped" in captured.out
-        # Activity should not be queried for stopped sessions
-        mock_activity.assert_not_called()
+        assert "No running sessions" in captured.out
+        assert "stopped-session" not in captured.out
+        mock_enrichment.assert_not_called()
 
-    @patch("paude.session_status.get_session_activity")
+    @patch("paude.session_status.get_session_enrichment")
     @patch("paude.session_discovery.collect_all_sessions")
     def test_sorts_by_activity(
         self,
         mock_collect: MagicMock,
-        mock_activity: MagicMock,
+        mock_enrichment: MagicMock,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         from paude.backends.base import Session
@@ -352,9 +360,19 @@ class TestStatusSessions:
             (idle_running, mock_backend),
             (active_running, mock_backend),
         ]
-        mock_activity.side_effect = [
-            SessionActivity(last_activity="10m ago", state="Idle", elapsed_seconds=600),
-            SessionActivity(last_activity="5s ago", state="Active", elapsed_seconds=5),
+        mock_enrichment.side_effect = [
+            (
+                SessionActivity(
+                    last_activity="10m ago", state="Idle", elapsed_seconds=600
+                ),
+                None,
+            ),
+            (
+                SessionActivity(
+                    last_activity="5s ago", state="Active", elapsed_seconds=5
+                ),
+                None,
+            ),
         ]
 
         status_sessions()
@@ -363,10 +381,12 @@ class TestStatusSessions:
         lines = captured.out.strip().split("\n")
         # Skip header and separator
         data_lines = lines[2:]
-        # active-ses (5s) should be first, idle-ses (10m) second, stopped last
+        # active-ses (5s) should be first, idle-ses (10m) second
+        # stopped sessions are excluded from output
+        assert len(data_lines) == 2
         assert "active-ses" in data_lines[0]
         assert "idle-ses" in data_lines[1]
-        assert "stopped-ses" in data_lines[2]
+        assert "stopped-ses" not in captured.out
 
 
 class TestResetSession:
