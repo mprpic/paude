@@ -102,21 +102,31 @@ def format_work_summary(summary: WorkSummary | None, max_width: int = 40) -> str
 
     is_default = summary.branch in ("main", "master")
 
-    parts: list[str] = []
+    prefix_parts: list[str] = []
     if not is_default:
-        parts.append(summary.branch)
+        prefix_parts.append(summary.branch)
     if summary.latest_subject:
-        parts.append(summary.latest_subject)
-    if summary.commits_ahead > 0:
-        parts.append(f"(+{summary.commits_ahead})")
+        prefix_parts.append(summary.latest_subject)
 
-    if not parts:
+    suffix = f"(+{summary.commits_ahead})" if summary.commits_ahead > 0 else ""
+
+    if not prefix_parts and not suffix:
         return ""
 
-    text = " ".join(parts)
+    prefix = " ".join(prefix_parts)
+    if prefix and suffix:
+        text = f"{prefix} {suffix}"
+    else:
+        text = prefix or suffix
 
     if len(text) > max_width:
-        text = text[: max_width - 3] + "..."
+        # Truncate prefix but preserve the (+N) suffix
+        suffix_with_space = f" {suffix}" if suffix else ""
+        avail = max_width - len(suffix_with_space) - 3  # 3 for "..."
+        if avail > 0:
+            text = prefix[:avail] + "..." + suffix_with_space
+        else:
+            text = text[:max_width]
 
     return text
 

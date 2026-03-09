@@ -170,15 +170,16 @@ class TestFormatWorkSummary:
         summary = WorkSummary(branch="master", commits_ahead=0, latest_subject="")
         assert format_work_summary(summary) == ""
 
-    def test_truncation(self) -> None:
+    def test_truncation_preserves_commit_count(self) -> None:
         summary = WorkSummary(
             branch="very-long-feature-branch",
             commits_ahead=5,
             latest_subject="This is a very long commit message that exceeds the limit",
         )
         result = format_work_summary(summary, max_width=40)
-        assert len(result) == 40
-        assert result.endswith("...")
+        assert len(result) <= 40
+        assert result.endswith("(+5)")
+        assert "..." in result
 
     def test_exact_max_width_no_truncation(self) -> None:
         summary = WorkSummary(branch="br", commits_ahead=1, latest_subject="X")
