@@ -361,8 +361,18 @@ class TestStatusSessions:
             (active_running, mock_backend),
         ]
         mock_enrichment.side_effect = [
-            (SessionActivity(last_activity="10m ago", state="Idle", elapsed_seconds=600), None),
-            (SessionActivity(last_activity="5s ago", state="Active", elapsed_seconds=5), None),
+            (
+                SessionActivity(
+                    last_activity="10m ago", state="Idle", elapsed_seconds=600
+                ),
+                None,
+            ),
+            (
+                SessionActivity(
+                    last_activity="5s ago", state="Active", elapsed_seconds=5
+                ),
+                None,
+            ),
         ]
 
         status_sessions()
@@ -371,10 +381,12 @@ class TestStatusSessions:
         lines = captured.out.strip().split("\n")
         # Skip header and separator
         data_lines = lines[2:]
-        # active-ses (5s) should be first, idle-ses (10m) second, stopped last
+        # active-ses (5s) should be first, idle-ses (10m) second
+        # stopped sessions are excluded from output
+        assert len(data_lines) == 2
         assert "active-ses" in data_lines[0]
         assert "idle-ses" in data_lines[1]
-        assert "stopped-ses" in data_lines[2]
+        assert "stopped-ses" not in captured.out
 
 
 class TestResetSession:

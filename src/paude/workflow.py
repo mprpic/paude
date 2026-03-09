@@ -290,13 +290,11 @@ def status_sessions(
 
     def _sort_key(
         r: tuple[Session, str, SessionActivity | None, WorkSummary | None],
-    ) -> tuple[int, float]:
-        status_order = 0 if r[0].status == "running" else 1
+    ) -> float:
         activity = r[2]
-        elapsed: float = float("inf")
         if activity and activity.elapsed_seconds is not None:
-            elapsed = activity.elapsed_seconds
-        return (status_order, elapsed)
+            return float(activity.elapsed_seconds)
+        return float("inf")
 
     rows.sort(key=_sort_key)
 
