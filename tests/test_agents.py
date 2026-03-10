@@ -267,8 +267,8 @@ class TestGeminiAgentConfig:
     def test_config_file_name_is_none(self) -> None:
         assert GeminiAgent().config.config_file_name is None
 
-    def test_yolo_flag_is_none(self) -> None:
-        assert GeminiAgent().config.yolo_flag is None
+    def test_yolo_flag(self) -> None:
+        assert GeminiAgent().config.yolo_flag == "--yolo"
 
     def test_clear_command_is_none(self) -> None:
         assert GeminiAgent().config.clear_command is None
