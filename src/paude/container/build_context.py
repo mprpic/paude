@@ -7,11 +7,15 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from paude import __version__
 from paude.config.models import FeatureSpec, PaudeConfig
 from paude.container.podman import image_exists, run_podman
 from paude.hash import compute_config_hash
+
+if TYPE_CHECKING:
+    from paude.agents.base import Agent
 
 
 @dataclass
@@ -89,18 +93,19 @@ def generate_dockerfile_content(
     config: PaudeConfig,
     using_default_paude_image: bool,
     include_claude_install: bool = False,
+    agent: Agent | None = None,
 ) -> str:
     """Generate Dockerfile content with features injected."""
     if using_default_paude_image:
         from paude.config.dockerfile import generate_pip_install_dockerfile
 
         content = generate_pip_install_dockerfile(
-            config, include_claude_install=include_claude_install
+            config, include_claude_install=include_claude_install, agent=agent
         )
     else:
         from paude.config.dockerfile import generate_workspace_dockerfile
 
-        content = generate_workspace_dockerfile(config)
+        content = generate_workspace_dockerfile(config, agent=agent)
 
     return inject_features(content, config.features)
 
@@ -136,6 +141,7 @@ def _prepare_remote_multistage(
     tmpdir: Path,
     entrypoint: Path,
     config_hash: str,
+    agent: Agent | None = None,
 ) -> BuildContext:
     """Prepare build context for remote multi-stage builds with user Dockerfile."""
     import sys
@@ -162,7 +168,7 @@ def _prepare_remote_multistage(
     # Stage 1: User's original Dockerfile (as "user-base")
     stage1 = _add_stage_alias(user_dockerfile)
     # Stage 2: Add paude requirements on top
-    stage2 = generate_workspace_dockerfile(config)
+    stage2 = generate_workspace_dockerfile(config, agent=agent)
     stage2 = stage2.replace(
         "ARG BASE_IMAGE\nFROM ${BASE_IMAGE}",
         "FROM user-base",
@@ -256,6 +262,7 @@ def prepare_build_context(
     script_dir: Path | None = None,
     platform: str | None = None,
     for_remote_build: bool = False,
+    agent: Agent | None = None,
 ) -> BuildContext:
     """Prepare a build context directory for container image builds.
 
@@ -296,7 +303,9 @@ def prepare_build_context(
             shutil.rmtree(tmpdir)
             raise FileNotFoundError(f"Dockerfile not found: {config.dockerfile}")
         if for_remote_build:
-            return _prepare_remote_multistage(config, tmpdir, entrypoint, config_hash)
+            return _prepare_remote_multistage(
+                config, tmpdir, entrypoint, config_hash, agent=agent
+            )
         base_image = _build_user_image_locally(config, config_hash, platform)
         using_default_paude_image = False
     elif config.base_image:
@@ -309,7 +318,7 @@ def prepare_build_context(
         print(f"  → Using default paude image: {base_image}", file=sys.stderr)
 
     dockerfile_content = generate_dockerfile_content(
-        config, using_default_paude_image, include_claude_install=True
+        config, using_default_paude_image, include_claude_install=True, agent=agent
     )
     # Replace ARG BASE_IMAGE / FROM ${BASE_IMAGE} with actual base image
     # This makes the Dockerfile self-contained for OpenShift binary builds

@@ -166,7 +166,9 @@ class TestGenerateDockerfileContent:
 
         generate_dockerfile_content(config, using_default_paude_image=True)
 
-        mock_pip.assert_called_once_with(config, include_claude_install=False)
+        mock_pip.assert_called_once_with(
+            config, include_claude_install=False, agent=None
+        )
         mock_inject.assert_called_once()
 
     @patch("paude.container.build_context.inject_features")
@@ -180,7 +182,7 @@ class TestGenerateDockerfileContent:
 
         generate_dockerfile_content(config, using_default_paude_image=False)
 
-        mock_ws.assert_called_once_with(config)
+        mock_ws.assert_called_once_with(config, agent=None)
         mock_inject.assert_called_once()
 
     @patch("paude.container.build_context.inject_features")

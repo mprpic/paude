@@ -260,7 +260,10 @@ def _create_podman_session(
     from paude.mounts import build_mounts
 
     home = Path.home()
-    image_manager = ImageManager(script_dir=_detect_dev_script_dir(), platform=platform)
+    agent_instance = get_agent(agent_name)
+    image_manager = ImageManager(
+        script_dir=_detect_dev_script_dir(), platform=platform, agent=agent_instance
+    )
 
     # Ensure image
     try:
@@ -276,7 +279,6 @@ def _create_podman_session(
         raise typer.Exit(1) from None
 
     # Build mounts
-    agent_instance = get_agent(agent_name)
     mounts = build_mounts(home, agent_instance)
 
     # Ensure proxy image when domain filtering is active
