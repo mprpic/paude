@@ -236,6 +236,29 @@ class PodmanBackend:
         """Check if a session has a proxy container."""
         return self._runner.container_exists(self._proxy_container_name(session_name))
 
+    def _build_attach_env(
+        self, name: str, github_token: str | None
+    ) -> dict[str, str] | None:
+        """Build extra environment for container attachment.
+
+        Collects GitHub token and secret env vars to pass at connection
+        time via ``podman exec -e``, keeping them out of the container spec.
+        """
+        from paude.agents import get_agent
+        from paude.agents.base import build_secret_environment_from_config
+
+        container = self._find_container_by_session_name(name)
+        labels = (container.get("Labels", {}) or {}) if container else {}
+        agent_name = labels.get(PAUDE_LABEL_AGENT, "claude")
+        agent = get_agent(agent_name)
+        secret_env = build_secret_environment_from_config(agent.config)
+
+        extra_env: dict[str, str] = {}
+        if github_token:
+            extra_env["GH_TOKEN"] = github_token
+        extra_env.update(secret_env)
+        return extra_env or None
+
     def _ensure_gcp_adc_secret(self) -> str | None:
         """Create or replace the GCP ADC Podman secret.
 
@@ -597,11 +620,10 @@ class PodmanBackend:
         self._runner.start_container(container_name)
 
         # Attach to the container via tmux entrypoint
-        extra_env = {"GH_TOKEN": github_token} if github_token else None
         return self._runner.attach_container(
             container_name,
             entrypoint=CONTAINER_ENTRYPOINT,
-            extra_env=extra_env,
+            extra_env=self._build_attach_env(name, github_token),
         )
 
     def stop_session(self, name: str) -> None:
@@ -672,11 +694,10 @@ class PodmanBackend:
             print("", file=sys.stderr)
 
         print(f"Connecting to session '{name}'...", file=sys.stderr)
-        extra_env = {"GH_TOKEN": github_token} if github_token else None
         return self._runner.attach_container(
             container_name,
             entrypoint=CONTAINER_ENTRYPOINT,
-            extra_env=extra_env,
+            extra_env=self._build_attach_env(name, github_token),
         )
 
     def _check_proxy_health(

@@ -35,4 +35,6 @@ def build_proxy_environment(proxy_name: str) -> dict[str, str]:
         "HTTPS_PROXY": proxy_url,
         "http_proxy": proxy_url,
         "https_proxy": proxy_url,
+        "NO_PROXY": "localhost,127.0.0.1",
+        "no_proxy": "localhost,127.0.0.1",
     }

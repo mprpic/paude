@@ -67,8 +67,7 @@ Cluster DNS could theoretically be used for DNS tunneling to exfiltrate data. Th
 
 ### SEC-005: `no_proxy` not set for internal services
 
-**Status**: Open
+**Status**: Resolved
 **Severity**: Low
 **Discovered**: 2026-03-06 during network egress security audit
-
-The `no_proxy` environment variable is not explicitly set, which could allow processes to bypass the proxy for internal cluster services. Needs analysis of which internal endpoints should be accessible and whether proxy bypass is a concern.
+**Resolved**: 2026-03-11 — Added `NO_PROXY=localhost,127.0.0.1` and `no_proxy=localhost,127.0.0.1` to both Podman and OpenShift proxy environments. This prevents internal localhost requests (e.g., Cursor agent's `GET http://localhost/getRepositoryInfo`) from being routed through the proxy and blocked.

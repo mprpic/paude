@@ -142,7 +142,7 @@ def session_create(
         str,
         typer.Option(
             "--agent",
-            help="Agent to use: claude (default), gemini.",
+            help="Agent to use: claude (default), cursor, gemini.",
         ),
     ] = "claude",
     git: Annotated[

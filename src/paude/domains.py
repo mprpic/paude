@@ -28,6 +28,12 @@ DOMAIN_ALIASES: dict[str, list[str]] = {
         "cloudcode-pa.googleapis.com",
         "play.googleapis.com",
     ],
+    "cursor": [
+        ".cursor.com",
+        ".cursor.sh",
+        ".cursor-cdn.com",
+        ".cursorapi.com",
+    ],
     "python": [
         ".pypi.org",
         ".pythonhosted.org",

@@ -57,16 +57,24 @@ class TestBuildEnvironment:
 class TestBuildProxyEnvironment:
     """Tests for build_proxy_environment."""
 
-    def test_includes_all_four_proxy_vars(self):
-        """Proxy environment includes all 4 proxy vars."""
+    def test_includes_all_proxy_vars(self):
+        """Proxy environment includes all proxy vars."""
         env = build_proxy_environment("paude-proxy")
         assert "HTTP_PROXY" in env
         assert "HTTPS_PROXY" in env
         assert "http_proxy" in env
         assert "https_proxy" in env
+        assert "NO_PROXY" in env
+        assert "no_proxy" in env
 
     def test_proxy_url_format(self):
         """Proxy URL has correct format."""
         env = build_proxy_environment("my-proxy")
         assert env["HTTP_PROXY"] == "http://my-proxy:3128"
         assert env["HTTPS_PROXY"] == "http://my-proxy:3128"
+
+    def test_no_proxy_bypasses_localhost(self):
+        """NO_PROXY includes localhost and 127.0.0.1."""
+        env = build_proxy_environment("paude-proxy")
+        assert env["NO_PROXY"] == "localhost,127.0.0.1"
+        assert env["no_proxy"] == "localhost,127.0.0.1"

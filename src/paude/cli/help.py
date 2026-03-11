@@ -28,7 +28,7 @@ COMMANDS:
     delete NAME         Delete a session and all its resources
 
 OPTIONS (for 'create' command):
-    --agent             Agent to use: claude (default), gemini
+    --agent             Agent to use: claude (default), cursor, gemini
     --yolo              Enable YOLO mode (skip all permission prompts)
     --allowed-domains   Domains to allow network access (repeatable).
                         Special: 'all', 'default' (vertexai+python+github)
@@ -115,6 +115,7 @@ SECURITY:
 
 AGENTS:
     --agent claude      Claude Code (default)
+    --agent cursor      Cursor CLI
     --agent gemini      Gemini CLI"""
     typer.echo(help_text)
 

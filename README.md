@@ -7,6 +7,7 @@ Run AI coding agents in secure containers. They make commits, you pull them back
 | Agent | Flag | Status |
 |-------|------|--------|
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `--agent claude` (default) | Supported |
+| [Cursor CLI](https://docs.cursor.com/cli) | `--agent cursor` | Supported |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `--agent gemini` | Supported |
 
 > **Note**: Your chosen agent must be installed and working on your local machine first.
@@ -28,7 +29,7 @@ Run AI coding agents in secure containers. They make commits, you pull them back
 
 ### Prerequisites
 
-**Your agent**: Claude Code or Gemini CLI installed and working locally.
+**Your agent**: Claude Code, Cursor CLI, or Gemini CLI installed and working locally.
 
 **Podman**: [Install Podman](https://podman.io/getting-started/installation) (for local backend).
 
@@ -42,6 +43,13 @@ export CLAUDE_CODE_USE_VERTEX=1
 export ANTHROPIC_VERTEX_PROJECT_ID=your-project-id
 export GOOGLE_CLOUD_PROJECT=your-project-id
 ```
+
+Cursor CLI:
+```bash
+agent login  # or set CURSOR_API_KEY=your-api-key
+```
+
+> **macOS note**: On Mac hosts, `CURSOR_API_KEY` is the simplest authentication method. Without it, each paude session requires a separate browser-based OAuth login via `agent login` inside the container.
 
 Gemini CLI:
 ```bash
@@ -62,6 +70,9 @@ uv tool install paude
 # Claude Code (default)
 cd your-project
 paude create --yolo --git my-project
+
+# Cursor CLI
+paude create --agent cursor --yolo --git my-project
 
 # Gemini CLI
 paude create --agent gemini --yolo --git my-project
@@ -128,7 +139,7 @@ pip install -e .
 ### Requirements
 
 - Python 3.11+ (for the Python package)
-- Your chosen agent CLI installed locally (Claude Code or Gemini CLI)
+- Your chosen agent CLI installed locally (Claude Code, Cursor CLI, or Gemini CLI)
 - [Podman](https://podman.io/getting-started/installation) (for local backend)
 - OpenShift CLI `oc` (for OpenShift backend)
 - Google Cloud SDK configured (`gcloud auth application-default login`)

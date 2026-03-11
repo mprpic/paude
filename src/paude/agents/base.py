@@ -22,10 +22,13 @@ class AgentConfig:
         env_vars: Agent-specific environment variables.
         skip_install_env_var: Env var to skip installation.
         passthrough_env_vars: Host env vars to forward to container.
+        secret_env_vars: Host env vars to deliver securely (not in container spec).
         passthrough_env_prefixes: Host env var prefixes to forward.
         config_dir_name: Config directory under HOME (e.g., ".claude").
         config_file_name: Config file under HOME (e.g., ".claude.json"), or None.
         config_excludes: Rsync excludes for config sync.
+        config_sync_files_only: When non-empty, only these files (relative to
+            config dir) are copied instead of rsyncing the entire directory.
         activity_files: Paths (relative to config dir) for activity detection.
         yolo_flag: CLI flag to skip permissions
             (e.g., "--dangerously-skip-permissions").
@@ -42,10 +45,12 @@ class AgentConfig:
     env_vars: dict[str, str] = field(default_factory=dict)
     skip_install_env_var: str = "PAUDE_SKIP_AGENT_INSTALL"
     passthrough_env_vars: list[str] = field(default_factory=list)
+    secret_env_vars: list[str] = field(default_factory=list)
     passthrough_env_prefixes: list[str] = field(default_factory=list)
     config_dir_name: str = ".claude"
     config_file_name: str | None = ".claude.json"
     config_excludes: list[str] = field(default_factory=list)
+    config_sync_files_only: list[str] = field(default_factory=list)
     activity_files: list[str] = field(default_factory=list)
     yolo_flag: str | None = "--dangerously-skip-permissions"
     clear_command: str | None = "/clear"
@@ -54,16 +59,33 @@ class AgentConfig:
 
 
 def build_environment_from_config(config: AgentConfig) -> dict[str, str]:
-    """Build environment dict by collecting passthrough vars from os.environ."""
+    """Build environment dict by collecting passthrough vars from os.environ.
+
+    Secret env vars (listed in config.secret_env_vars) are excluded from
+    this output. Use build_secret_environment_from_config() for those.
+    """
+    secret_set = set(config.secret_env_vars)
     env: dict[str, str] = {}
     for var in config.passthrough_env_vars:
+        if var in secret_set:
+            continue
         value = os.environ.get(var)
         if value:
             env[var] = value
     for prefix in config.passthrough_env_prefixes:
         for key, value in os.environ.items():
-            if key.startswith(prefix):
+            if key.startswith(prefix) and key not in secret_set:
                 env[key] = value
+    return env
+
+
+def build_secret_environment_from_config(config: AgentConfig) -> dict[str, str]:
+    """Build environment dict for secret env vars from os.environ."""
+    env: dict[str, str] = {}
+    for var in config.secret_env_vars:
+        value = os.environ.get(var)
+        if value:
+            env[var] = value
     return env
 
 

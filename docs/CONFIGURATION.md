@@ -34,6 +34,7 @@ The default allowlist includes:
 
 Agent-specific defaults are added automatically:
 - **Claude Code**: `.claude.ai`, `.anthropic.com`
+- **Cursor CLI**: `.cursor.com`, `.cursor.sh`, `.cursor-cdn.com`, `.cursorapi.com` (HTTP/1.1 mode is automatically enabled for proxy compatibility)
 - **Gemini CLI**: `cloudcode-pa.googleapis.com`, `play.googleapis.com`, plus the `nodejs` alias
 
 Opt-in language ecosystem aliases:
