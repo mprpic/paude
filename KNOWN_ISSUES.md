@@ -13,6 +13,22 @@ Technical debt identified during codebase analysis. Address these before adding 
 **Discovered**: 2026-01-29 during code quality analysis
 **Resolved**: 2026-03-09 — Split 2,246-line `cli.py` into `cli/` package with 8 modules (app.py, help.py, helpers.py, create.py, commands.py, remote.py, domains.py, status.py). Backward compatibility preserved via `__init__.py` re-exports. Dead `_encode_path`/`_decode_path` wrappers removed from `podman.py`.
 
+## Agent Limitations
+
+Issues caused by upstream agent behavior, not paude bugs.
+
+### AGENT-001: Gemini CLI token expiry in long-running sessions
+
+**Status**: Open (upstream limitation)
+**Severity**: Low
+**Discovered**: 2026-03-11 during Gemini CLI idle session testing
+
+When a Gemini CLI session sits idle inside a paude container (Podman or OpenShift) for ~1 hour, the OAuth access token expires. The already-running Gemini process does not gracefully refresh the token and instead prompts for browser-based re-authentication, which is not possible inside a container.
+
+The container has everything needed to refresh tokens (oauth_creds.json with a valid refresh_token, network access to oauth2.googleapis.com). Starting a fresh `gemini` process inside the container works fine and refreshes the token automatically. The issue is specific to the long-running process not handling token expiry during idle periods.
+
+**Workaround**: Kill the existing Gemini process and restart it inside the tmux session. The new process will pick up the refresh token and authenticate successfully.
+
 ## Security Hardening Backlog
 
 Deferred items from the network egress security audit (2026-03-06).
