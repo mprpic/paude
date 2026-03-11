@@ -40,6 +40,7 @@ from paude.backends.shared import (
     build_agent_env,
     decode_path,
 )
+from paude.environment import build_proxy_environment
 
 
 class OpenShiftBackend:
@@ -639,8 +640,10 @@ class OpenShiftBackend:
 
         # Build environment variables
         from paude.agents import get_agent
+        from paude.agents.base import build_secret_environment_from_config
 
         agent = get_agent(config.agent)
+        secret_env = build_secret_environment_from_config(agent.config)
         session_env = dict(config.env)
         session_env.update(build_agent_env(agent.config))
 
@@ -656,11 +659,8 @@ class OpenShiftBackend:
         # Add proxy env vars and suppress prompts when egress filtering is active
         if config.allowed_domains is not None:
             session_env["PAUDE_SUPPRESS_PROMPTS"] = "1"
-            proxy_url = f"http://paude-proxy-{session_name}:3128"
-            session_env["HTTP_PROXY"] = proxy_url
-            session_env["HTTPS_PROXY"] = proxy_url
-            session_env["http_proxy"] = proxy_url
-            session_env["https_proxy"] = proxy_url
+            proxy_name = f"paude-proxy-{session_name}"
+            session_env.update(build_proxy_environment(proxy_name))
 
         # Add credential watchdog environment variables
         session_env["PAUDE_CREDENTIAL_TIMEOUT"] = str(config.credential_timeout)
@@ -702,7 +702,9 @@ class OpenShiftBackend:
             self._wait_for_pod_ready(pod_name)
 
             # Sync configuration and credentials
-            self._sync_config_to_pod(pod_name, agent_name=config.agent)
+            self._sync_config_to_pod(
+                pod_name, agent_name=config.agent, secret_env=secret_env
+            )
 
         session_status = "running" if config.wait_for_ready else "pending"
         print(f"Session '{session_name}' created.", file=sys.stderr)
@@ -809,10 +811,16 @@ class OpenShiftBackend:
         pod_name: str,
         verbose: bool = False,
         github_token: str | None = None,
+        secret_env: dict[str, str] | None = None,
+        agent_name: str = "claude",
     ) -> None:
         """Refresh gcloud credentials on the pod (delegates to ConfigSyncer)."""
         self._syncer.sync_credentials(
-            pod_name, verbose=verbose, github_token=github_token
+            pod_name,
+            verbose=verbose,
+            github_token=github_token,
+            secret_env=secret_env,
+            agent_name=agent_name,
         )
 
     def _sync_config_to_pod(
@@ -821,6 +829,7 @@ class OpenShiftBackend:
         verbose: bool = False,
         github_token: str | None = None,
         agent_name: str = "claude",
+        secret_env: dict[str, str] | None = None,
     ) -> None:
         """Sync all configuration to pod (delegates to ConfigSyncer)."""
         self._syncer.sync_full_config(
@@ -828,6 +837,7 @@ class OpenShiftBackend:
             verbose=verbose,
             github_token=github_token,
             agent_name=agent_name,
+            secret_env=secret_env,
         )
 
     def _rewrite_plugin_paths(self, pod_name: str, config_path: str) -> None:
@@ -958,23 +968,36 @@ class OpenShiftBackend:
             print(f"Session '{name}' is not running.", file=sys.stderr)
             return 1
 
+        # Collect secret env vars for the agent
+        from paude.agents.base import build_secret_environment_from_config
+
+        sts = self._get_statefulset(name)
+        sts_labels = sts.get("metadata", {}).get("labels", {}) if sts else {}
+        agent_name = sts_labels.get(PAUDE_LABEL_AGENT, "claude")
+
+        from paude.agents import get_agent
+
+        agent = get_agent(agent_name)
+        secret_env = build_secret_environment_from_config(agent.config)
+
         # Check if this is first connect or reconnect
         if self._is_config_synced(pod_name):
             # Reconnect: only refresh gcloud credentials (fast)
             self._sync_credentials_to_pod(
-                pod_name, verbose=False, github_token=github_token
+                pod_name,
+                verbose=False,
+                github_token=github_token,
+                secret_env=secret_env,
+                agent_name=agent_name,
             )
         else:
             # First connect: full config sync (gcloud + agent + git)
-            # Determine agent name from statefulset labels
-            sts = self._get_statefulset(name)
-            sts_labels = sts.get("metadata", {}).get("labels", {}) if sts else {}
-            agent_name = sts_labels.get(PAUDE_LABEL_AGENT, "claude")
             self._sync_config_to_pod(
                 pod_name,
                 verbose=False,
                 github_token=github_token,
                 agent_name=agent_name,
+                secret_env=secret_env,
             )
 
         # Check if workspace is empty (no .git directory)

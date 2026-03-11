@@ -1716,6 +1716,8 @@ class TestCreateSessionWithProxy:
         assert env_dict.get("HTTPS_PROXY") == expected_proxy
         assert env_dict.get("http_proxy") == expected_proxy
         assert env_dict.get("https_proxy") == expected_proxy
+        assert env_dict.get("NO_PROXY") == "localhost,127.0.0.1"
+        assert env_dict.get("no_proxy") == "localhost,127.0.0.1"
 
     @patch("subprocess.run")
     def test_no_proxy_when_allowed_domains_none(self, mock_run: MagicMock) -> None:
@@ -2287,6 +2289,99 @@ class TestSyncCredentialsToPod:
         all_calls_str = str(mock_run.call_args_list)
         assert "rsync" not in all_calls_str  # No rsync for claude dir
         assert "gitconfig" not in all_calls_str  # No gitconfig sync
+
+
+class TestSyncCursorAuthJson:
+    """Tests for Cursor auth.json sync in ConfigSyncer."""
+
+    @patch("subprocess.run")
+    def test_sync_agent_config_syncs_auth_json_for_cursor(
+        self, mock_run: MagicMock, tmp_path: Path
+    ) -> None:
+        """_sync_agent_config syncs auth.json for cursor agent."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        # Create fake cursor config and auth.json
+        cursor_dir = tmp_path / ".cursor"
+        cursor_dir.mkdir()
+        (cursor_dir / "cli-config.json").write_text("{}")
+        config_cursor = tmp_path / ".config" / "cursor"
+        config_cursor.mkdir(parents=True)
+        (config_cursor / "auth.json").write_text('{"accessToken": "test"}')
+
+        backend = OpenShiftBackend(config=OpenShiftConfig(namespace="test-ns"))
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            backend._syncer._sync_agent_config("test-pod-0", agent_name="cursor")
+
+        # Verify oc cp was called for cursor-auth.json
+        cp_calls = [c for c in mock_run.call_args_list if "cp" in str(c)]
+        auth_cp_calls = [c for c in cp_calls if "cursor-auth.json" in str(c)]
+        assert len(auth_cp_calls) >= 1
+
+    @patch("subprocess.run")
+    def test_sync_agent_config_does_not_sync_auth_json_for_claude(
+        self, mock_run: MagicMock, tmp_path: Path
+    ) -> None:
+        """_sync_agent_config does NOT sync auth.json for non-cursor agents."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        # Create fake claude config
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+
+        # Create fake cursor auth.json (should NOT be synced for claude agent)
+        config_cursor = tmp_path / ".config" / "cursor"
+        config_cursor.mkdir(parents=True)
+        (config_cursor / "auth.json").write_text('{"accessToken": "test"}')
+
+        backend = OpenShiftBackend(config=OpenShiftConfig(namespace="test-ns"))
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            backend._syncer._sync_agent_config("test-pod-0", agent_name="claude")
+
+        # Verify cursor-auth.json was NOT synced
+        all_calls_str = str(mock_run.call_args_list)
+        assert "cursor-auth.json" not in all_calls_str
+
+    @patch("subprocess.run")
+    def test_sync_credentials_syncs_auth_json_for_cursor(
+        self, mock_run: MagicMock, tmp_path: Path
+    ) -> None:
+        """sync_credentials syncs auth.json on reconnect for cursor agent."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        config_cursor = tmp_path / ".config" / "cursor"
+        config_cursor.mkdir(parents=True)
+        (config_cursor / "auth.json").write_text('{"accessToken": "test"}')
+
+        backend = OpenShiftBackend(config=OpenShiftConfig(namespace="test-ns"))
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            backend._sync_credentials_to_pod("test-pod-0", agent_name="cursor")
+
+        cp_calls = [c for c in mock_run.call_args_list if "cp" in str(c)]
+        auth_cp_calls = [c for c in cp_calls if "cursor-auth.json" in str(c)]
+        assert len(auth_cp_calls) >= 1
+
+    @patch("subprocess.run")
+    def test_sync_credentials_does_not_sync_auth_json_for_claude(
+        self, mock_run: MagicMock, tmp_path: Path
+    ) -> None:
+        """sync_credentials does NOT sync auth.json for non-cursor agents."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        config_cursor = tmp_path / ".config" / "cursor"
+        config_cursor.mkdir(parents=True)
+        (config_cursor / "auth.json").write_text('{"accessToken": "test"}')
+
+        backend = OpenShiftBackend(config=OpenShiftConfig(namespace="test-ns"))
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            backend._sync_credentials_to_pod("test-pod-0", agent_name="claude")
+
+        all_calls_str = str(mock_run.call_args_list)
+        assert "cursor-auth.json" not in all_calls_str
 
 
 class TestCreateSessionWithProxyNetworkPolicy:

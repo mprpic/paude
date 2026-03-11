@@ -211,6 +211,15 @@ if [[ -f /credentials/github_token ]]; then
     export GH_CONFIG_DIR="/tmp/gh-config"
     mkdir -p "$GH_CONFIG_DIR" 2>/dev/null || true
 fi
+# Load secret environment variables from credentials tmpfs (OpenShift)
+if [[ -d /credentials/env ]]; then
+    for f in /credentials/env/*; do
+        [[ -f "$f" ]] || continue
+        varname=$(basename "$f")
+        export "$varname"="$(cat "$f")"
+    done
+fi
+
 # For Podman: GH_TOKEN may be set via podman exec -e; just ensure GH_CONFIG_DIR is set
 if [[ -n "${GH_TOKEN:-}" ]] && [[ -z "${GH_CONFIG_DIR:-}" ]]; then
     export GH_CONFIG_DIR="/tmp/gh-config"
@@ -280,6 +289,53 @@ apply_sandbox_config() {
             else
                 jq -n --arg ws "$workspace" '{($ws): "TRUST_FOLDER"}' > "$trusted_json"
             fi
+            ;;
+        cursor)
+            # Cursor CLI sandbox config
+            local cli_config="$HOME/.cursor/cli-config.json"
+            mkdir -p "$HOME/.cursor" 2>/dev/null || true
+
+            # Seed from host cli-config.json if available (carries auth tokens)
+            if [[ -f /tmp/cursor-cli-config.seed ]]; then
+                cp /tmp/cursor-cli-config.seed "$cli_config"
+                chmod g+rw "$cli_config" 2>/dev/null || true
+            fi
+
+            # Ensure version field exists so CLI doesn't prompt for setup,
+            # and force HTTP/1.1 for agent inference (HTTP/2 bypasses proxy).
+            if [[ -f "$cli_config" ]]; then
+                jq '. * {"version": (.version // 1), "network": {"useHttp1ForAgent": true}}' \
+                    "$cli_config" > "${cli_config}.tmp" \
+                    && mv "${cli_config}.tmp" "$cli_config"
+            else
+                jq -n '{"version": 1, "network": {"useHttp1ForAgent": true}}' > "$cli_config"
+            fi
+
+            # Sync Cursor auth.json (accessToken/refreshToken) from host
+            mkdir -p "$HOME/.config/cursor" 2>/dev/null || true
+            # Podman path: seed file bind-mounted at /tmp/
+            if [[ -f /tmp/cursor-auth.seed ]]; then
+                cp /tmp/cursor-auth.seed "$HOME/.config/cursor/auth.json"
+                chmod g+rw "$HOME/.config/cursor/auth.json" 2>/dev/null || true
+            fi
+            # OpenShift path: synced to /credentials/ by sync.py
+            if [[ -f /credentials/cursor-auth.json ]]; then
+                cp /credentials/cursor-auth.json "$HOME/.config/cursor/auth.json"
+                chmod g+rw "$HOME/.config/cursor/auth.json" 2>/dev/null || true
+            fi
+
+            # Pre-trust workspace folder so Cursor doesn't prompt on every connect
+            local ws_slug
+            ws_slug="${workspace//\//-}"
+            ws_slug="${ws_slug#-}"
+            local trusted_dir="$HOME/.cursor/projects/$ws_slug"
+            mkdir -p "$trusted_dir" 2>/dev/null || true
+            cat > "$trusted_dir/.workspace-trusted" <<TRUST
+{
+  "trustedAt": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)",
+  "workspacePath": "$workspace"
+}
+TRUST
             ;;
         *)
             # Claude Code sandbox config
