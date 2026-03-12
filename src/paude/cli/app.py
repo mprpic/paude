@@ -8,11 +8,14 @@ from enum import StrEnum
 import typer
 
 from paude import __version__
+from paude.cli.help import PaudeGroup
 
 app = typer.Typer(
     name="paude",
+    cls=PaudeGroup,
     help="Run AI coding agents in isolated containers.",
     add_completion=False,
+    rich_markup_mode="rich",
     context_settings={
         "allow_interspersed_args": False,
         "help_option_names": ["-h", "--help"],

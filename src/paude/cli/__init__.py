@@ -21,7 +21,6 @@ from paude.cli.app import app as app
 from paude.cli.app import version_callback
 from paude.cli.commands import session_list
 from paude.cli.create import session_create as session_create
-from paude.cli.help import help_callback
 from paude.cli.helpers import _parse_copy_path as _parse_copy_path
 from paude.cli.helpers import find_session_backend as find_session_backend
 
@@ -39,18 +38,8 @@ def main(
             help="Show paude version and exit.",
         ),
     ] = False,
-    help_opt: Annotated[
-        bool,
-        typer.Option(
-            "--help",
-            "-h",
-            callback=help_callback,
-            is_eager=True,
-            help="Show this help message and exit.",
-        ),
-    ] = False,
 ) -> None:
-    """Run Claude Code in an isolated container."""
+    """Run AI coding agents in secure containers."""
     # If a subcommand is invoked, let it handle things
     if ctx.invoked_subcommand is not None:
         return

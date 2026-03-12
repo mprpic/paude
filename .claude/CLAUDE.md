@@ -190,7 +190,7 @@ When adding a new CLI flag, add tests in `tests/test_cli.py`.
 
 When adding or changing user-facing features (flags, options, behavior):
 1. Update `README.md` with the new usage patterns
-2. Update the `show_help()` function in `src/paude/cli/help.py` if adding new flags
+2. Update `_HELP_SECTIONS` in `src/paude/cli/help.py` if adding new flags
 3. Keep examples consistent between README and help output
 
 ## Documentation Language
