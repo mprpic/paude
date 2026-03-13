@@ -51,8 +51,7 @@ class GeminiAgent:
             "",
             "# Install Node.js for Gemini CLI",
             "USER root",
-            "RUN dnf module enable -y nodejs:20"
-            " && dnf install -y nodejs npm && dnf clean all",
+            "RUN dnf install -y nodejs npm && dnf clean all",
             "",
             "# Install Gemini CLI",
             "RUN npm install -g @google/gemini-cli",
@@ -60,10 +59,6 @@ class GeminiAgent:
             "# Set up home directory",
             "USER paude",
             f"WORKDIR {container_home}",
-            "",
-            "# Fix permissions for OpenShift arbitrary UID compatibility",
-            "USER root",
-            f"RUN chmod -R g+rwX {container_home}",
         ]
         return lines
 
